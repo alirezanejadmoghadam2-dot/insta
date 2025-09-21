@@ -3,6 +3,7 @@ import time
 import random
 import threading
 from pathlib import Path
+from flask import Flask
 from instagrapi import Client
 from instagrapi.exceptions import LoginRequired, MediaNotFound, TwoFactorRequired
 
@@ -14,25 +15,41 @@ ACCOUNTS = [
         'password': 'armin3254',
         'video_path': 'morakab.mp4',
         'caption': """
-می‌خوام بهتون نشون بدم که استراتژی‌ای که بهتون معرفی شده، تا امروز تقریباً صد درصد موفق بوده، ولی با احتیاط ما همون نود درصد رو در نظر می‌گیریم. حالا چطور می‌تونید بدون لورج گرفتن از این استراتژی استفاده کنید؟ چطور می‌تونید بدون لورج گرفتن و فقط با هر پنج روز یک بار باز شدن معامله، طی دو تا سه سال به یک درآمد غیرقابل تصور برسید؟
-.
-می‌ریم سراغ محاسبه‌ی سپرده‌ی مرکب.
-مبلغ سپرده رو فقط ۱۰۰ دلار می‌زنید. شما سرمایه‌ی زیادی نیاز ندارید، فقط همین صد دلار، نه بیشتر. نرخ هر دوره‌ی ما بین پنج تا پانزده درصد متغیره، اما ما میانگین هشت درصد رو در نظر می‌گیریم. سود سالانه هم دقیقا بر اساس همین پایه محاسبه می‌شه. مدت سپرده این‌طوری تعریف می‌شه: هر پنج روز یک بار باز بشه. یعنی تقریباً ۷۳ بار در سال. پس ما ۷۳ پوزیشن در سال خواهیم داشت.
-.
-نتیجه‌ی سه سال تلاش تیم ما، رسیدن به یک استراتژی صد درصدی بود که به صورت رایگان در اختیارتون گذاشتیم
-.
-هزینه ای که شما برای ۳ سال کار ما میدین لایک و کامنت و شیر هست. ارادتمند.
+متن کپشن شما در اینجا قرار می‌گیرد...
 """
     },
+    # می‌توانید اکانت‌های بیشتری اضافه کنید
 ]
 
 MIN_WAIT_MINUTES = 25
 MAX_WAIT_MINUTES = 65
 
+# ======================== وب سرور برای زنده نگه داشتن سرویس =======================
+
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    """این تابع به درخواست‌های HTTP پاسخ می‌دهد تا Render سرویس را خاموش نکند."""
+    return "Bot is alive and running!"
 
 # =============================================================================
 
+# متغیر گلوبال برای کنترل تایمر آپلود
+upload_status = {'in_progress': False, 'start_time': 0}
+
+def upload_progress_timer():
+    """یک تایمر زمان سپری شده را در حین آپلود نمایش می‌دهد."""
+    while upload_status['in_progress']:
+        elapsed = time.time() - upload_status['start_time']
+        mins, secs = divmod(int(elapsed), 60)
+        timer_str = f"[UPLOADING] زمان سپری شده: {mins:02d}:{secs:02d}"
+        print(timer_str, end='\r')
+        time.sleep(1)
+    print(" " * 40 + "\r", end="") # پاک کردن خط تایمر
+
 def countdown_timer(seconds, prefix=""):
+    """تایمر شمارش معکوس را برای زمان استراحت نمایش می‌دهد."""
     total_seconds = int(seconds)
     for i in range(total_seconds, 0, -1):
         mins, secs = divmod(i, 60)
@@ -41,12 +58,11 @@ def countdown_timer(seconds, prefix=""):
         time.sleep(1)
     print(" " * (len(timer_str) + 5) + "\r", end="")
 
-
 def warmup_account(cl: Client, username: str):
+    # ... (این تابع بدون تغییر باقی می‌ماند)
     try:
         print(f"[{username}] در حال گرم کردن اکانت (شبیه‌سازی رفتار انسانی)...")
         print(f"[{username}] - مشاهده فید اصلی...")
-        # <<< تغییر ۳: استفاده از فید اصلی کاربر که قابل اطمینان‌تر است
         feed_posts = cl.timeline_feed(amount=5)
         time.sleep(random.uniform(3, 7))
 
@@ -59,7 +75,7 @@ def warmup_account(cl: Client, username: str):
                     time.sleep(random.uniform(8, 20))
                 except Exception:
                     pass
-
+        
         print(f"[{username}] - مشاهده پروفایل شخصی...")
         cl.user_info(cl.user_id)
         time.sleep(random.uniform(4, 9))
@@ -68,7 +84,6 @@ def warmup_account(cl: Client, username: str):
     except Exception as e:
         print(f"[{username}] خطایی در حین گرم کردن اکانت رخ داد: {e}")
         return False
-
 
 def upload_reel_for_account(account_info):
     username = account_info['username']
@@ -81,16 +96,12 @@ def upload_reel_for_account(account_info):
         return
 
     print(f"[{username}] در حال آماده‌سازی ربات...")
-    # <<< تغییر ۱: افزایش زمان انتظار برای درخواست‌ها به ۶۰۰ ثانیه (۱۰ دقیقه)
-    cl = Client(request_timeout=5000)
+    cl = Client(request_timeout=1800) # افزایش زمان انتظار به ۳۰ دقیقه
 
+    # ... (بخش لاگین بدون تغییر باقی می‌ماند)
     device_settings_file = Path(f"{username}_device.json")
     session_file = Path(f"{username}_session.json")
-
-    if device_settings_file.exists():
-        cl.load_settings(device_settings_file)
-        print(f"[{username}] تنظیمات دستگاه بارگذاری شد.")
-
+    if device_settings_file.exists(): cl.load_settings(device_settings_file)
     login_successful = False
     if session_file.exists():
         try:
@@ -98,69 +109,79 @@ def upload_reel_for_account(account_info):
             cl.login(username, password)
             print(f"[{username}] با موفقیت از طریق Session قبلی وارد شدید.")
             login_successful = True
-        except Exception:
-            print(f"[{username}] سشن قبلی نامعتبر بود. تلاش برای ورود مجدد...")
-            # اگر سشن خراب بود، اجازه می‌دهیم کد به بخش لاگین اصلی برود
-            pass
-
+        except Exception: pass
     if not login_successful:
         try:
             cl.login(username, password)
             login_successful = True
-            print(f"[{username}] با موفقیت وارد اکانت شد.")
         except TwoFactorRequired:
-            print(f"[{username}] نیاز به تایید دو مرحله‌ای (2FA) دارد.")
-            verification_code = input(f"لطفاً کد 6 رقمی را برای اکانت '{username}' وارد کنید: ").strip()
+            print(f"[{username}] نیاز به تایید دو مرحله‌ای دارد. لطفاً کد را در کنسول Render وارد کنید.")
+            verification_code = input(f"کد 6 رقمی برای '{username}': ").strip()
             try:
                 cl.login(username, password, verification_code=verification_code)
                 login_successful = True
-                print(f"[{username}] با موفقیت با کد تایید وارد شدید.")
-            except Exception as e_2fa:
-                print(f"[{username}] ورود با کد تایید ناموفق بود. خطا: {e_2fa}")
-                return
-        except Exception as e:
-            print(f"[{username}] خطایی جدی در هنگام ورود رخ داد: {e}")
-            return
-
+            except Exception as e_2fa: print(f"[{username}] ورود ناموفق بود: {e_2fa}"); return
+        except Exception as e: print(f"[{username}] خطا در ورود: {e}"); return
     if login_successful:
         cl.dump_settings(session_file)
-        if not device_settings_file.exists():
-            cl.dump_settings(device_settings_file)
-            print(f"[{username}] تنظیمات دستگاه برای اولین بار ایجاد شد.")
-    else:
-        return
+        if not device_settings_file.exists(): cl.dump_settings(device_settings_file)
+    else: return
+    # ... (پایان بخش لاگین)
 
     while True:
         warmup_account(cl, username)
         time.sleep(random.uniform(15, 40))
+        
+        progress_thread = None
         try:
-            # <<< تغییر ۲: اضافه کردن پیام قبل از آپلود
             print(f"\n[{username}] در حال آپلود ریلز از فایل '{video_path}'...")
-            print(f"[{username}] این فرآیند ممکن است بسته به سرعت اینترنت شما طولانی باشد. لطفاً صبور باشید.")
+            
+            # شروع تایمر زمان سپری شده
+            upload_status['start_time'] = time.time()
+            upload_status['in_progress'] = True
+            progress_thread = threading.Thread(target=upload_progress_timer)
+            progress_thread.start()
 
             cl.clip_upload(path=video_path, caption=caption_text, share_to_feed=False)
+            
+            # متوقف کردن تایمر
+            upload_status['in_progress'] = False
+            progress_thread.join() # منتظر می‌مانیم تا ترد تایمر تمام شود
+            
             print(f"✅ [{username}] ریلز با موفقیت به صورت آزمایشی آپلود شد!")
         except Exception as e:
             print(f"❌ [{username}] خطایی در هنگام آپلود رخ داد: {e}")
+        finally:
+            # اطمینان از اینکه تایمر در هر حالتی (موفقیت یا شکست) متوقف می‌شود
+            if upload_status['in_progress']:
+                upload_status['in_progress'] = False
+            if progress_thread and progress_thread.is_alive():
+                progress_thread.join()
 
         wait_minutes = random.randint(MIN_WAIT_MINUTES, MAX_WAIT_MINUTES)
         wait_seconds = wait_minutes * 60
         prefix = f"[{username}] استراحت به مدت {wait_minutes} دقیقه. "
         countdown_timer(wait_seconds, prefix)
-        print(f"[{username}] زمان استراحت به پایان رسید. آماده برای چرخه بعدی.")
+        print(f"[{username}] زمان استراحت به پایان رسید.")
 
-
-if __name__ == "__main__":
+def start_bot_threads():
+    """تابع اصلی برای راه‌اندازی تردها برای هر اکانت."""
     if not ACCOUNTS or ACCOUNTS[0]['username'] == 'YOUR_USERNAME_1':
         print("خطا: لطفاً اطلاعات اکانت‌ها را به درستی وارد کنید.")
-    else:
-        random.shuffle(ACCOUNTS)
-        threads = []
-        print(f"🚀 ربات برای {len(ACCOUNTS)} اکانت با ترتیب تصادفی اجرا می‌شود...")
-        for account in ACCOUNTS:
-            thread = threading.Thread(target=upload_reel_for_account, args=(account,))
-            threads.append(thread)
-            thread.start()
-            time.sleep(random.uniform(10, 25))
-        for thread in threads:
-            thread.join()
+        return
+
+    random.shuffle(ACCOUNTS)
+    print(f"🚀 ربات برای {len(ACCOUNTS)} اکانت با ترتیب تصادفی اجرا می‌شود...")
+    for account in ACCOUNTS:
+        thread = threading.Thread(target=upload_reel_for_account, args=(account,))
+        thread.start()
+        time.sleep(random.uniform(10, 25))
+
+if __name__ == "__main__":
+    # 1. ربات اینستاگرام را در یک ترد جداگانه در پس‌زمینه اجرا کن
+    bot_thread = threading.Thread(target=start_bot_threads)
+    bot_thread.start()
+    
+    # 2. وب سرور Flask را در ترد اصلی اجرا کن تا به Render پاسخ دهد
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
