@@ -96,7 +96,7 @@ def upload_reel_for_account(account_info):
         return
 
     print(f"[{username}] در حال آماده‌سازی ربات...")
-    cl = Client(request_timeout=300) # افزایش زمان انتظار به ۳۰ دقیقه
+    cl = Client(request_timeout=60) # افزایش زمان انتظار به ۳۰ دقیقه
 
     # ... (بخش لاگین بدون تغییر باقی می‌ماند)
     device_settings_file = Path(f"{username}_device.json")
@@ -185,4 +185,5 @@ if __name__ == "__main__":
     # 2. وب سرور Flask را در ترد اصلی اجرا کن تا به Render پاسخ دهد
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
+
 
